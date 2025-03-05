@@ -1,0 +1,34 @@
+version: '3.8'  # Versão mais recente do Compose
+
+services:
+  app:
+    build: .
+    container_name: app
+    ports:
+      - "5000:5000"
+    networks:
+      - security_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000"]
+      interval: 10s
+      retries: 3
+      start_period: 5s
+
+  zap:
+    image: zaproxy/zap-stable
+    container_name: zap
+    command: ["zap-baseline.py", "-t", "http://app:5000", "-r", "zap-report.html"]
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - security_net
+    volumes:
+      - ./reports:/zap/wrk  # Volume compartilhado para salvar os relatórios
+    working_dir: /zap/wrk  # Garante que o script seja executado dentro do diretório correto
+    environment:
+      - ZAP_DAEMON=True  # Ativa o modo daemon, se necessário
+
+networks:
+  security_net:
+    driver: bridge

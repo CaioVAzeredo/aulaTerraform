@@ -1,0 +1,119 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+    commands:
+      - echo "Instalando dependências..."
+      - pip install -r requirements.txt
+      - echo "Baixando e instalando Trivy..."
+      - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
+      - export PATH=$PATH:/usr/local/bin
+      - chmod +x ./bin/trivy
+      - mv ./bin/trivy /usr/local/bin/trivy
+      - echo "Instalando Docker e Docker Compose..."
+      - apt-get update && apt-get install -y docker.io docker-compose
+      - echo "Iniciando Docker..."
+      - nohup dockerd > /dev/null 2>&1 &
+      - sleep 10  # 🔥 Espera para garantir que o Docker inicializou corretamente
+
+  pre_build:
+    commands:
+      - echo "Obtendo IP da instância EC2 gerenciada pelo Terraform..."
+      - |
+        INSTANCE_IP=$(aws ssm get-parameter --name "/devsecops/ec2_instance_ip" --query "Parameter.Value" --output text)
+        echo "IP da instância: $INSTANCE_IP"
+
+      - echo "Definindo variável para a chave SSH..."
+      - SSH_KEY=${CODEBUILD_SRC_DIR}/${SSH_PRIVATE_KEY}
+      - echo $SSH_KEY
+      - chmod 400 $SSH_KEY  # Ajusta permissões da chave
+
+      - echo "Criando e ajustando permissões do diretório reports..."
+      - mkdir -p reports
+      - chmod -R 777 reports  # Permite escrita dentro do container
+
+      - echo "Obtendo credenciais do Docker Hub..."
+      - DOCKER_USERNAME=$(aws ssm get-parameter --name "/devsecops/docker_username" --with-decryption --query "Parameter.Value" --output text)
+      - DOCKER_PASSWORD=$(aws ssm get-parameter --name "/devsecops/docker_password" --with-decryption --query "Parameter.Value" --output text)
+      - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+      - echo "Rodando Trivy para verificação de vulnerabilidades..."
+      - trivy --version
+      - trivy filesystem --no-progress --exit-code 0 .
+      - trivy config .  # Escaneia configurações inseguras (Terraform, YAML, etc.)
+      - trivy fs --scanners vuln --exit-code 0 --severity HIGH,CRITICAL .
+      - trivy fs --scanners secret --exit-code 0 .
+      - trivy fs --scanners license --exit-code 0 .
+      - trivy fs --scanners misconfig --exit-code 0 .
+
+      - echo "Criando diretório contrib para armazenar o template HTML..."
+      - mkdir -p contrib
+      - echo "Baixando template para relatório HTML do Trivy..."
+      - wget -O contrib/html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+      
+      - echo "Rodando Trivy para verificação de vulnerabilidades e salvando no HTML..."
+      - trivy fs --scanners vuln,secret,misconfig,license --format template --template "@contrib/html.tpl" --output trivy-report.html .
+      - echo "Adicionando saída completa do Trivy ao relatório HTML..."
+      - trivy fs --scanners vuln,secret,misconfig,license . | tee -a trivy-report.html
+
+      - echo "Rodando Trivy para verificação de vulnerabilidades e salvando no JSON..."
+      - trivy fs --scanners vuln,secret,misconfig,license --format json --output trivy-report.json .
+      - echo "Adicionando saída completa do Trivy ao relatório JSON..."
+      - trivy fs --scanners vuln,secret,misconfig,license . | tee -a trivy-report.json
+
+  build:
+    commands:
+      - echo "Iniciando a aplicação Flask dentro do container..."
+      - docker-compose up -d
+      - sleep 15  # Espera a aplicação subir
+
+  post_build:
+    commands:
+      - echo "Rodando OWASP ZAP para testes de segurança dinâmica (DAST)..."
+      - mkdir -p reports  # Garante que o diretório de relatórios existe
+      - docker-compose up zap || true
+      - ls -la reports/
+      - cat reports/zap-report.html || echo "Arquivo não gerado corretamente!"
+
+      - echo "Verificando se o relatório Trivy foi gerado..."
+      - ls -lh
+      - ls -lh | grep trivy-report.json || echo "Arquivo não encontrado!"
+      - cat trivy-report.json || echo "O relatório está vazio!"
+
+      - echo "Enviando relatórios para S3..."
+      - aws s3 cp trivy-report.json s3://bucket-devsecops-camila/trivy-report-$(date +%F).json
+      - aws s3 cp trivy-report.html s3://bucket-devsecops-camila/trivy-report-$(date +%F).html
+      - aws s3 cp reports/zap-report.html s3://bucket-devsecops-camila/zap-report-$(date +%F).html
+      
+      - echo "Fazendo deploy na EC2..."
+      # 🔥 Esperando a EC2 estar disponível via SSH
+      - echo "Aguardando SSH estar disponível..."
+      - until nc -z -v -w5 $INSTANCE_IP 22; do echo "Aguardando EC2..."; sleep 5; done
+
+      # 🔥 Enviando arquivos para a EC2 (usando IP dinâmico)
+      - scp -o StrictHostKeyChecking=no -i "$SSH_KEY" docker-compose.yaml ec2-user@$INSTANCE_IP:/home/ec2-user/
+      - scp -o StrictHostKeyChecking=no -i "$SSH_KEY" Dockerfile ec2-user@$INSTANCE_IP:/home/ec2-user/
+      - scp -o StrictHostKeyChecking=no -i "$SSH_KEY" requirements.txt ec2-user@$INSTANCE_IP:/home/ec2-user/
+      - scp -o StrictHostKeyChecking=no -i "$SSH_KEY" app.py ec2-user@$INSTANCE_IP:/home/ec2-user/
+
+      # 🔥 Parando e removendo containers antigos antes do deploy
+      - echo "Parando e removendo containers antigos..."
+      - ssh -i "$SSH_KEY" ec2-user@$INSTANCE_IP "cd /home/ec2-user && docker-compose down"
+
+      # 🔥 Removendo imagens antigas para garantir que a EC2 use a versão mais recente
+      - echo "Removendo imagens antigas..."
+      - ssh -i "$SSH_KEY" ec2-user@$INSTANCE_IP "docker rmi -f \$(docker images -q) || true"
+
+      # 🔥 Reconstruindo a imagem na EC2
+      - echo "Reconstruindo a imagem na EC2..."
+      - ssh -i "$SSH_KEY" ec2-user@$INSTANCE_IP "cd /home/ec2-user && docker-compose build --no-cache"
+
+      # 🔥 Subindo a aplicação na EC2
+      - echo "Subindo a aplicação na EC2..."
+      - ssh -i "$SSH_KEY" ec2-user@$INSTANCE_IP "cd /home/ec2-user && docker-compose up -d"
+
+artifacts:
+  files:
+    - '**/*'
