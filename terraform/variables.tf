@@ -34,7 +34,7 @@ variable "s3_bucket_name" {
 }
 
 variable "github_owner" {
-  description = "Dono do repositório GitHub"
+  description = "Dono do repositório GitHu"
   default     = "CaioVAzeredo" //Substitua por seu usuario github
 }
 
