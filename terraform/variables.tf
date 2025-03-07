@@ -1,6 +1,6 @@
 variable "aws_region" {
   description = "Região da AWS onde os recursos serão criados"
-  default     = "us-east-2"
+  default     = "us-east-1"
 }
 
 variable "pipeline_name" {
@@ -21,16 +21,16 @@ variable "ec2_ami" {
 
 variable "key_pair" {
   description = "Nome do par de chaves SSH para a EC2"
-  default     = "terraformkeypare" //Substitua por sua chave SSH
+  default     = "terraform-key-pair" //Substitua por sua chave SSH
 }
 variable "key_pair_ssh" {
   description = "Nome do par de chaves SSH para a EC2"
-  default     = "terraformkeypare.pem" //Substitua por sua chave SSH
+  default     = "terraform-key-pair.pem" //Substitua por sua chave SSH
 }
 
 variable "s3_bucket_name" {
   description = "Nome do bucket S3 para armazenar os artefatos do CodePipeline"
-  default     = "laddevops" //Substitua por seu bucket S3
+  default     = "terraformbucketcaionovo" //Substitua por seu bucket S3
 }
 
 variable "github_owner" {
