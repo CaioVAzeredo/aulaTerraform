@@ -1,4 +1,3 @@
-
 # 🔥 Criando Roles para o Pipeline
 resource "aws_iam_role" "codepipeline_role" {
   name = "codepipeline_role"
@@ -13,12 +12,46 @@ resource "aws_iam_role" "codepipeline_role" {
   })
 }
 
+# 🔥 Anexar a política AWSCodePipeline_FullAccess ao codepipeline_role
 resource "aws_iam_policy_attachment" "codepipeline_policy" {
   name       = "codepipeline-policy"
   roles      = [aws_iam_role.codepipeline_role.name]
   policy_arn = "arn:aws:iam::aws:policy/AWSCodePipeline_FullAccess"
 }
 
+# 🔥 Adicionar uma política personalizada para permitir acesso ao bucket S3
+resource "aws_iam_policy" "codepipeline_s3_access" {
+  name        = "CodePipelineS3AccessPolicy"
+  description = "Permite ao CodePipeline acessar o bucket S3"
+  policy      = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect   = "Allow",
+        Action   = [
+          "s3:GetObject",
+          "s3:GetObjectVersion",
+          "s3:GetBucketVersioning",
+          "s3:PutObject",
+          "s3:PutObjectAcl"
+        ],
+        Resource = [
+          "arn:aws:s3:::${var.s3_bucket_name}",
+          "arn:aws:s3:::${var.s3_bucket_name}/*"
+        ]
+      }
+    ]
+  })
+}
+
+# 🔥 Anexar a política personalizada ao codepipeline_role
+resource "aws_iam_policy_attachment" "codepipeline_s3_access_attach" {
+  name       = "codepipeline-s3-access-policy-attachment"
+  roles      = [aws_iam_role.codepipeline_role.name]
+  policy_arn = aws_iam_policy.codepipeline_s3_access.arn
+}
+
+# 🔥 Criar o IAM Role para o CodeBuild
 resource "aws_iam_role" "codebuild_role" {
   name = "codebuild_role"
   
@@ -32,6 +65,7 @@ resource "aws_iam_role" "codebuild_role" {
   })
 }
 
+# 🔥 Anexar a política AdministratorAccess ao codebuild_role
 resource "aws_iam_policy_attachment" "codebuild_policy" {
   name       = "codebuild-policy"
   roles      = [aws_iam_role.codebuild_role.name]
@@ -59,6 +93,7 @@ resource "aws_iam_policy" "codepipeline_codebuild_policy" {
   })
 }
 
+# 🔥 Anexar a política ao codepipeline_role
 resource "aws_iam_policy_attachment" "codepipeline_codebuild_policy_attach" {
   name       = "codepipeline-codebuild-policy-attachment"
   roles      = [aws_iam_role.codepipeline_role.name]
@@ -93,7 +128,7 @@ resource "aws_codebuild_project" "trivy_scan" {
 
   source {
     type            = "GITHUB"
-    location        = "https://github.com/${var.github_owner}/${var.github_repo}.git"
+    location        = "https://github.com/CaioVAzeredo/aulaTerraform.git"
     git_clone_depth = 1
   }
 }
@@ -119,10 +154,10 @@ resource "aws_codepipeline" "my_pipeline" {
       version  = "1"
       output_artifacts = ["source_output"]
       configuration = {
-      Owner      = var.github_owner
-      Repo       = var.github_repo
-      Branch     = var.github_branch
-      OAuthToken = var.github_token
+        Owner      = "CaioVAzeredo"
+        Repo       = "aulaTerraform"
+        Branch     = "main"
+        OAuthToken = var.github_token
       }
     }
   }

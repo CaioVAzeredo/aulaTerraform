@@ -25,10 +25,11 @@ phases:
         INSTANCE_IP=$(aws ssm get-parameter --name "/devsecops/ec2_instance_ip" --query "Parameter.Value" --output text)
         echo "IP da instância: $INSTANCE_IP"
 
-      - echo "Definindo variável para a chave SSH..."
-      - SSH_KEY=${CODEBUILD_SRC_DIR}/${SSH_PRIVATE_KEY}
-      - echo $SSH_KEY
-      - chmod 400 $SSH_KEY  # Ajusta permissões da chave
+      - echo "Criando arquivo de chave SSH..."
+      - echo "$SSH_PRIVATE_KEY" > /tmp/terraform-key-pair.pem
+      - chmod 400 /tmp/terraform-key-pair.pem  # Ajusta permissões da chave
+      - SSH_KEY=/tmp/terraform-key-pair.pem
+      - echo "Arquivo de chave SSH criado em: $SSH_KEY"
 
       - echo "Criando e ajustando permissões do diretório reports..."
       - mkdir -p reports
@@ -93,26 +94,30 @@ phases:
       - until nc -z -v -w5 $INSTANCE_IP 22; do echo "Aguardando EC2..."; sleep 5; done
 
       # 🔥 Enviando arquivos para a EC2 (usando IP dinâmico)
-      - scp -o StrictHostKeyChecking=no -i "$SSH_KEY" docker-compose.yaml ec2-user@$INSTANCE_IP:/home/ec2-user/
-      - scp -o StrictHostKeyChecking=no -i "$SSH_KEY" Dockerfile ec2-user@$INSTANCE_IP:/home/ec2-user/
-      - scp -o StrictHostKeyChecking=no -i "$SSH_KEY" requirements.txt ec2-user@$INSTANCE_IP:/home/ec2-user/
-      - scp -o StrictHostKeyChecking=no -i "$SSH_KEY" app.py ec2-user@$INSTANCE_IP:/home/ec2-user/
+      - scp -o StrictHostKeyChecking=no -i "/tmp/terraform-key-pair.pem" docker-compose.yaml ec2-user@$INSTANCE_IP:/home/ec2-user/
+      - scp -o StrictHostKeyChecking=no -i "/tmp/terraform-key-pair.pem" Dockerfile ec2-user@$INSTANCE_IP:/home/ec2-user/
+      - scp -o StrictHostKeyChecking=no -i "/tmp/terraform-key-pair.pem" requirements.txt ec2-user@$INSTANCE_IP:/home/ec2-user/
+      - scp -o StrictHostKeyChecking=no -i "/tmp/terraform-key-pair.pem" app.py ec2-user@$INSTANCE_IP:/home/ec2-user/
 
       # 🔥 Parando e removendo containers antigos antes do deploy
       - echo "Parando e removendo containers antigos..."
-      - ssh -i "$SSH_KEY" ec2-user@$INSTANCE_IP "cd /home/ec2-user && docker-compose down"
+      - ssh -i "/tmp/terraform-key-pair.pem" ec2-user@$INSTANCE_IP "cd /home/ec2-user && docker-compose down"
 
       # 🔥 Removendo imagens antigas para garantir que a EC2 use a versão mais recente
       - echo "Removendo imagens antigas..."
-      - ssh -i "$SSH_KEY" ec2-user@$INSTANCE_IP "docker rmi -f \$(docker images -q) || true"
+      - ssh -i "/tmp/terraform-key-pair.pem" ec2-user@$INSTANCE_IP "docker rmi -f \$(docker images -q) || true"
 
       # 🔥 Reconstruindo a imagem na EC2
       - echo "Reconstruindo a imagem na EC2..."
-      - ssh -i "$SSH_KEY" ec2-user@$INSTANCE_IP "cd /home/ec2-user && docker-compose build --no-cache"
+      - ssh -i "/tmp/terraform-key-pair.pem" ec2-user@$INSTANCE_IP "cd /home/ec2-user && docker-compose build --no-cache"
 
       # 🔥 Subindo a aplicação na EC2
       - echo "Subindo a aplicação na EC2..."
-      - ssh -i "$SSH_KEY" ec2-user@$INSTANCE_IP "cd /home/ec2-user && docker-compose up -d"
+      - ssh -i "/tmp/terraform-key-pair.pem" ec2-user@$INSTANCE_IP "cd /home/ec2-user && docker-compose up -d"
+
+      # 🔥 Removendo arquivo de chave SSH após o uso
+      - echo "Removendo arquivo de chave SSH..."
+      - rm -f /tmp/terraform-key-pair.pem
 
 artifacts:
   files:

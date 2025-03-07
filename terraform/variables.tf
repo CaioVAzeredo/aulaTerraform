@@ -6,7 +6,7 @@ variable "aws_region" {
 variable "pipeline_name" {
   description = "Nome do CodePipeline"
   type        = string
-  default     = "devsecops-pipeline-caio"
+  default     = "devsecops-pipeline-camila"
 }
 
 variable "ec2_instance_type" {
@@ -30,11 +30,11 @@ variable "key_pair_ssh" {
 
 variable "s3_bucket_name" {
   description = "Nome do bucket S3 para armazenar os artefatos do CodePipeline"
-  default     = "terraformbucketcaionovo" //Substitua por seu bucket S3
+  default     = "terraformbucketunico2" //Substitua por seu bucket S3
 }
 
 variable "github_owner" {
-  description = "Dono do repositório GitHu"
+  description = "Dono do repositório GitHub"
   default     = "CaioVAzeredo" //Substitua por seu usuario github
 }
 
