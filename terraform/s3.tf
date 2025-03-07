@@ -19,8 +19,8 @@ resource "aws_iam_policy" "codepipeline_s3_policy" {
           "s3:ListBucket"
         ],
         Resource = [
-          "arn:aws:s3:::bucket-devsecops-camila",
-          "arn:aws:s3:::bucket-devsecops-camila/*"
+          "arn:aws:s3:::devsecops-caio",
+          "arn:aws:s3:::devsecops-caio/*"
         ]
       }
     ]

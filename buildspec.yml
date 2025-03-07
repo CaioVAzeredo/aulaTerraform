@@ -83,9 +83,9 @@ phases:
       - cat trivy-report.json || echo "O relatório está vazio!"
 
       - echo "Enviando relatórios para S3..."
-      - aws s3 cp trivy-report.json s3://bucket-devsecops-camila/trivy-report-$(date +%F).json
-      - aws s3 cp trivy-report.html s3://bucket-devsecops-camila/trivy-report-$(date +%F).html
-      - aws s3 cp reports/zap-report.html s3://bucket-devsecops-camila/zap-report-$(date +%F).html
+      - aws s3 cp trivy-report.json s3://devsecops-caio/trivy-report-$(date +%F).json
+      - aws s3 cp trivy-report.html s3://devsecops-caio/trivy-report-$(date +%F).html
+      - aws s3 cp reports/zap-report.html s3://devsecops-caio/zap-report-$(date +%F).html
       
       - echo "Fazendo deploy na EC2..."
       # 🔥 Esperando a EC2 estar disponível via SSH
